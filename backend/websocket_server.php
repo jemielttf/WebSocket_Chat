@@ -22,15 +22,6 @@ class ChatServer implements MessageComponentInterface {
 
         $this->redis->set('greeting', 'Hello Redis');
         echo $this->redis->get('greeting') . "\n";
-
-        // イベントループの次のサイクルで Redis の購読を開始
-        // $this->loop->futureTick(function () {
-        //     echo "futureTick :: Subscribing to Redis channel\n";
-
-        //     $this->subscribeToRedis();
-        // });
-
-        $this->subscribeToRedis();
     }
 
     public function onOpen(ConnectionInterface $conn) {
@@ -42,6 +33,13 @@ class ChatServer implements MessageComponentInterface {
             'resource_id' => $conn->resourceId,
             'greeting' => $this->redis->get('greeting')
         ]));
+
+        // イベントループの次のサイクルで Redis の購読を開始
+        Loop::futureTick(function () {
+            echo "futureTick :: Subscribing to Redis channel\n";
+
+            $this->subscribeToRedis();
+        });
     }
 
     public function onMessage(ConnectionInterface $from, $msg) {
@@ -53,13 +51,16 @@ class ChatServer implements MessageComponentInterface {
 
         // クライアントからのメッセージを Redis に publish
         $message = json_encode($data);
-        $this->redis->publish("chat_channel", $message);
+        $subscribe_count = $this->redis->publish("chat_channel", $message);
 
         // 履歴を保存
 		$this->redis->rpush("chat_history", $message);
 		$this->redis->ltrim("chat_history", -100, -1);
 
+        $this->broadcast($message);
+
         echo "Chat message from ({$data['resource_id']}): {$data['message']}\n";
+        echo "Message published to Redis, subscribers notified: {$subscribe_count}\n";
     }
 
 
@@ -77,12 +78,6 @@ class ChatServer implements MessageComponentInterface {
         echo "subscribeToRedis :: Subscribing to Redis channel\n";
 
         $redis = new RedisClient(['host' => 'redis']); // 購読専用の Redis クライアント
-        // $redis->subscribe(['chat_channel'], function ($message) {
-        //     foreach ($this->clients as $client) {
-        //         $client->send($message);
-        //     }
-        // });
-
         $pubsub = $redis->pubSubLoop();
         $pubsub->subscribe('chat_channel');
 
@@ -92,18 +87,18 @@ class ChatServer implements MessageComponentInterface {
             foreach ($pubsub as $message) {
                 if ($message->kind === 'message') {
                     echo "Received message from Redis: {$message->payload}\n";
-                    $this->handleMessage($message->payload);
+                    $this->broadcast($message->payload);
                 }
             }
         });
     }
 
-    public function handleMessage($message) {
+    public function broadcast($message) {
         // Decode JSON message to an object
         $message = json_decode($message);
 
         // Now $message is an object, you can access its properties
-        echo "Received message: {$message->message}\n";
+        echo "broadcast message: {$message->message}\n";
 
         // Send the message to all connected clients
         foreach ($this->clients as $client) {

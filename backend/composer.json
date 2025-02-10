@@ -2,6 +2,7 @@
     "require": {
         "cboden/ratchet": "^0.4.4",
         "predis/predis": "^2.3",
-        "react/event-loop": "^1.5.0"
+        "react/event-loop": "^1.5.0",
+        "clue/redis-react": "^2.8"
     }
 }
