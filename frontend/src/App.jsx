@@ -46,7 +46,7 @@ export default function App() {
 			timeout_id = setTimeout(function() {
 				console.log(`Now set to isComposing.current = false`);
 				isComposing.current = false;
-			}, 500);
+			}, 80);
 		};
 
 		msgInput.addEventListener('compositionstart', handleCompositionStart);
