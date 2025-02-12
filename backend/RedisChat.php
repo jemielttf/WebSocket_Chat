@@ -24,7 +24,6 @@ class RedisChat implements MessageComponentInterface
         $this->clients->attach($conn);
 
         echo "New connection! ({$conn->resourceId})\n";
-        echo '$this->redis_publisher is : ' . get_class($this->redis_publisher) . "\n";
 
         if (empty($this->redis_publisher)) {
             $this->redis_publisher = new RedisClient('redis');
