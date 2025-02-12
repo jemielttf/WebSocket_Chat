@@ -3,7 +3,6 @@
 use Ratchet\MessageComponentInterface;
 use Ratchet\ConnectionInterface;
 use React\EventLoop\LoopInterface;
-// use Predis\Client as RedisClient;
 use Clue\React\Redis\RedisClient;
 
 class RedisChat implements MessageComponentInterface
@@ -25,16 +24,17 @@ class RedisChat implements MessageComponentInterface
         $this->clients->attach($conn);
 
         echo "New connection! ({$conn->resourceId})\n";
+        echo '$this->redis_publisher is : ' . get_class($this->redis_publisher) . "\n";
 
         if (empty($this->redis_publisher)) {
             $this->redis_publisher = new RedisClient('redis');
-            $this->redis_publisher->set('greeting_2', "greeting 2");
+            $this->redis_publisher->set('greeting', "Hello! Redis");
 
             // Redis チャンネルを購読
             $this->subscribeToRedis();
         }
 
-        $this->redis_publisher->get('greeting_2')->then(function($value) use($conn) {
+        $this->redis_publisher->get('greeting')->then(function($value) use($conn) {
             echo "{$value}\n";
 
             // クライアントに接続情報を送信
@@ -63,7 +63,6 @@ class RedisChat implements MessageComponentInterface
 		// 履歴を保存
         $this->redis_publisher->rpush("chat_history", $json);
 		$this->redis_publisher->ltrim("chat_history", -100, -1);
-
 
 
         echo "------------------\n";
