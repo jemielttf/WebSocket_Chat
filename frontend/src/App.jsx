@@ -52,6 +52,11 @@ export default function App() {
 				<input
 					value={input}
 					onChange={(e) => setInput(e.target.value)}
+					onKeyUp={(e) => {
+						if (e.key === "Enter") {
+							sendMessage();
+						}
+					}}
 					placeholder="Type a message..."
 				/>
 				<button onClick={sendMessage}>Send</button>

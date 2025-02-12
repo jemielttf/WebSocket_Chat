@@ -3,36 +3,49 @@
 use Ratchet\MessageComponentInterface;
 use Ratchet\ConnectionInterface;
 use React\EventLoop\LoopInterface;
-use Predis\Client as RedisClient;
+// use Predis\Client as RedisClient;
+use Clue\React\Redis\RedisClient;
 
 class RedisChat implements MessageComponentInterface
 {
     protected $clients;
-    protected $redis;
+    protected $redis_publisher;
+    protected $redis_subscriber;
     protected $loop;
 
-    public function __construct(LoopInterface $loop, RedisClient $redis) {
+
+    public function __construct(LoopInterface $loop) {
         $this->clients = new \SplObjectStorage;
         $this->loop = $loop;
-        $this->redis = $redis;
 
-        $this->redis->set('greeting', 'Hello Redis');
-        echo $this->redis->get('greeting') . "\n";
-
-        // Redis チャンネルを購読
-        $this->subscribeToRedis();
+        echo "__construct :: Init RedisChat\n";
     }
 
     public function onOpen(ConnectionInterface $conn) {
         $this->clients->attach($conn);
+
         echo "New connection! ({$conn->resourceId})\n";
 
-        // クライアントに接続情報を送信
-        $conn->send(json_encode([
-            'type' => 'connection',
-            'resource_id' => $conn->resourceId,
-            'greeting' => $this->redis->get('greeting')
-        ]));
+        if (empty($this->redis_publisher)) {
+            $this->redis_publisher = new RedisClient('redis');
+            $this->redis_publisher->set('greeting_2', "greeting 2");
+
+            // Redis チャンネルを購読
+            $this->subscribeToRedis();
+        }
+
+        $this->redis_publisher->get('greeting_2')->then(function($value) use($conn) {
+            echo "{$value}\n";
+
+            // クライアントに接続情報を送信
+            $conn->send(json_encode([
+                'type' => 'connection',
+                'resource_id' => $conn->resourceId,
+                'greeting' => $value,
+            ]));
+        }, function (Exception $e) {
+            echo 'Error: ' . $e->getMessage() . PHP_EOL;
+        });
     }
 
     public function onMessage(ConnectionInterface $from, $msg) {
@@ -42,14 +55,20 @@ class RedisChat implements MessageComponentInterface
             'message' => $msg
         ];
 
+        $json = json_encode($data);
+
         // Redis にメッセージをパブリッシュ
-        $this->redis->publish('chat_channel', json_encode($data));
+        $this->redis_publisher->publish('chat_channel', $json);
 
 		// 履歴を保存
-		$this->redis->rpush("chat_history", json_encode($data));
-		$this->redis->ltrim("chat_history", -100, -1);
+        $this->redis_publisher->rpush("chat_history", $json);
+		$this->redis_publisher->ltrim("chat_history", -100, -1);
 
+
+
+        echo "------------------\n";
 		echo "Chat message from ({$data['resource_id']}): {$data['message']}\n";
+        echo "------------------\n";
     }
 
     public function onClose(ConnectionInterface $conn) {
@@ -65,27 +84,25 @@ class RedisChat implements MessageComponentInterface
     protected function subscribeToRedis() {
         echo "call :: subscribeToRedis()\n";
 
-        $redis = new RedisClient(['host' => 'redis']);
-        $pubsub = $redis->pubSubLoop();
-        $pubsub->subscribe('chat_channel');
+        $this->redis_subscriber = new RedisClient('redis');
+        $this->redis_subscriber->subscribe('chat_channel');
 
-        $this->loop->addPeriodicTimer(1, function() use ($pubsub) {
-            foreach ($pubsub as $message) {
-                if ($message->kind === 'message') {
-                    $this->handleMessage($message->payload);
-                }
-            }
+        $this->redis_subscriber->on('message', function (string $channel, string $payload) {
+            // pubsub message received on given $channel
+            var_dump($channel, json_decode($payload));
+            echo "------------------\n";
+
+            $this->broadcast(json_decode($payload));
         });
 
         echo "Subscribing to Redis channel\n";
     }
 
-    public function handleMessage($message) {
-        // Decode JSON message to an object
-        $message = json_decode($message);
-
+    public function broadcast($message) {
         // Now $message is an object, you can access its properties
-        echo "Received message: {$message->message}\n";
+        echo "Received message:\n";
+        print_r($message);
+        echo "------------------\n";
 
         // Send the message to all connected clients
         foreach ($this->clients as $client) {

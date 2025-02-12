@@ -7,6 +7,7 @@ use Ratchet\WebSocket\WsServer;
 use Predis\Client as RedisClient;
 use React\EventLoop\Loop;
 use React\EventLoop\LoopInterface;
+use Clue\React\Redis\Factory as RedisFactory;
 
 require 'vendor/autoload.php';
 
@@ -84,12 +85,12 @@ class ChatServer implements MessageComponentInterface {
         $this->loop->addPeriodicTimer(1, function() use ($pubsub) {
             echo "addPeriodicTimer :: Listening for messages from Redis channel\n";
 
-            foreach ($pubsub as $message) {
-                if ($message->kind === 'message') {
-                    echo "Received message from Redis: {$message->payload}\n";
-                    $this->broadcast($message->payload);
-                }
-            }
+            // foreach ($pubsub as $message) {
+            //     if ($message->kind === 'message') {
+            //         echo "Received message from Redis: {$message->payload}\n";
+            //         $this->broadcast($message->payload);
+            //     }
+            // }
         });
     }
 
