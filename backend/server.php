@@ -5,7 +5,7 @@ require 'RedisChat.php';
 use Ratchet\Http\HttpServer;
 use Ratchet\Server\IoServer;
 use Ratchet\WebSocket\WsServer;
-use React\EventLoop\Loop;;
+use React\EventLoop\Loop;
 
 $loop = Loop::get();
 
