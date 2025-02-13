@@ -18,11 +18,21 @@ export default function App() {
 
 			switch (data.type) {
 				case 'connection':
-					setMessages((prev) => [...prev, `Your ID is ${data.resource_id}`]);
+					setMessages((prev) => [...prev, {
+						id: 		data.id,
+						type: 		data.type,
+						user_id: 	data.resource_id,
+						message: 	`Your ID is ${data.resource_id}`
+					}]);
 					break;
 
 				case 'message':
-					setMessages((prev) => [...prev, `${data.resource_id} : ${data.message}`]);
+					setMessages((prev) => [...prev, {
+						id: 		data.id,
+						type: 		data.type,
+						user_id: 	data.resource_id,
+						message: 	`${data.message}`
+					}]);
 					break;
 
 				default:
@@ -73,8 +83,10 @@ export default function App() {
 			<div className="chat-header">WebSocket Chat</div>
 			<div className="chat-messages">
 				{messages.map((msg, idx) => (
-
-					<p key={idx}>{msg}</p>
+					<p key={idx} data-msg_id={msg.id} data-user_id={msg.user_id}>
+						{msg.type == 'message' && <span className="name">{msg.user_id} : </span>}
+						<span className="message">{msg.message}</span>
+					</p>
 				))}
 			</div>
 			<div className="chat-input">

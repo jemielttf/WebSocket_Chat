@@ -12,6 +12,8 @@ class RedisChat implements MessageComponentInterface
     protected $redis_subscriber;
     protected $loop;
 
+    protected $msg_id = 0;
+
 
     public function __construct(LoopInterface $loop) {
         $this->clients = new \SplObjectStorage;
@@ -34,25 +36,30 @@ class RedisChat implements MessageComponentInterface
         }
 
         $this->redis_publisher->get('greeting')->then(function($value) use($conn) {
-            echo "{$value}\n";
+            echo "{$this->msg_id} : {$value}\n";
 
             // クライアントに接続情報を送信
             $conn->send(json_encode([
-                'type' => 'connection',
-                'resource_id' => $conn->resourceId,
-                'greeting' => $value,
+                'id'            => $this->msg_id,
+                'type'          => 'connection',
+                'resource_id'   => $conn->resourceId,
+                'greeting'      => $value,
             ]));
+            $this->msg_id++;
         }, function (Exception $e) {
             echo 'Error: ' . $e->getMessage() . PHP_EOL;
         });
     }
 
     public function onMessage(ConnectionInterface $from, $msg) {
+        echo "メッセージID : {$this->msg_id}\n";
         $data = [
-            'type' => 'message',
-            'resource_id' => $from->resourceId,
-            'message' => $msg
+            'id'            => $this->msg_id,
+            'type'          => 'message',
+            'resource_id'   => $from->resourceId,
+            'message'       => $msg
         ];
+        $this->msg_id++;
 
         $json = json_encode($data);
 
