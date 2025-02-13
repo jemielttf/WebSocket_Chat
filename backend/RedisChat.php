@@ -13,6 +13,7 @@ class RedisChat implements MessageComponentInterface
     protected $loop;
 
     protected $msg_id = 0;
+    protected $user_name_dic = [];
 
 
     public function __construct(LoopInterface $loop) {
@@ -52,13 +53,35 @@ class RedisChat implements MessageComponentInterface
     }
 
     public function onMessage(ConnectionInterface $from, $msg) {
-        echo "メッセージID : {$this->msg_id}\n";
-        $data = [
-            'id'            => $this->msg_id,
-            'type'          => 'message',
-            'resource_id'   => $from->resourceId,
-            'message'       => $msg
-        ];
+        $msg = json_decode($msg);
+
+        switch($msg->type) {
+            case 'user_name' :
+                $data = [
+                    'id'            => $this->msg_id,
+                    'type'          => 'user_name',
+                    'resource_id'   => $from->resourceId,
+                    'user_name'     => $msg->user_name,
+                ];
+                $this->user_name_dic[$from->resourceId] = $msg->user_name;
+                break;
+
+            case 'message' :
+                $data = [
+                    'id'            => $this->msg_id,
+                    'type'          => 'message',
+                    'resource_id'   => $from->resourceId,
+                    'user_name'     => $this->user_name_dic[$from->resourceId],
+                    'message'       => $msg->message,
+                ];
+                break;
+
+            default :
+                $data = [
+                    'id'            => $this->msg_id,
+                    'type'          => 'message',
+                ];
+        }
         $this->msg_id++;
 
         $json = json_encode($data);
