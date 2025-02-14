@@ -17,7 +17,13 @@ export default function App() {
 
 		socket.onmessage = (event) => {
 			const data = JSON.parse(event.data);
-			console.log({ data });
+
+			if (data.error) {
+				console.error({ data });
+				return;
+			} else {
+				console.log({ data });
+			}
 
 			switch (data.type) {
 				case 'connection':
