@@ -7,134 +7,156 @@ use Clue\React\Redis\RedisClient;
 
 class RedisChat implements MessageComponentInterface
 {
-    protected $clients;
-    protected $redis_publisher;
-    protected $redis_subscriber;
-    protected $loop;
+	protected $clients;
+	protected $redis_publisher;
+	protected $redis_subscriber;
+	protected $loop;
 
-    protected $msg_id = 0;
-    protected $user_name_dic = [];
+	protected $msg_id = 0;
 
+	public function __construct(LoopInterface $loop) {
+		$this->clients = new \SplObjectStorage;
+		$this->loop = $loop;
 
-    public function __construct(LoopInterface $loop) {
-        $this->clients = new \SplObjectStorage;
-        $this->loop = $loop;
+		echo "__construct :: Init RedisChat\n";
+	}
 
-        echo "__construct :: Init RedisChat\n";
-    }
+	public function onOpen(ConnectionInterface $conn) {
+		$this->clients->attach($conn);
 
-    public function onOpen(ConnectionInterface $conn) {
-        $this->clients->attach($conn);
+		echo "New connection! ({$conn->resourceId})\n";
 
-        echo "New connection! ({$conn->resourceId})\n";
+		if (empty($this->redis_publisher)) {
+			$this->redis_publisher = new RedisClient('redis');
+			$this->redis_publisher->set('greeting', "Hello! Redis");
 
-        if (empty($this->redis_publisher)) {
-            $this->redis_publisher = new RedisClient('redis');
-            $this->redis_publisher->set('greeting', "Hello! Redis");
+			// Redis チャンネルを購読
+			$this->subscribeToRedis();
+		}
 
-            // Redis チャンネルを購読
-            $this->subscribeToRedis();
-        }
+		$this->redis_publisher->get('greeting')->then(function ($value) use ($conn) {
+			echo "{$this->msg_id} : {$value}\n";
 
-        $this->redis_publisher->get('greeting')->then(function($value) use($conn) {
-            echo "{$this->msg_id} : {$value}\n";
+			// クライアントに接続情報を送信
+			$conn->send(json_encode([
+				'id'            => $this->msg_id,
+				'type'          => 'connection',
+				'resource_id'   => $conn->resourceId,
+				'greeting'      => $value,
+			]));
+			$this->msg_id++;
+		}, function (Exception $e) {
+			echo 'Error: ' . $e->getMessage() . PHP_EOL;
+		});
+	}
 
-            // クライアントに接続情報を送信
-            $conn->send(json_encode([
-                'id'            => $this->msg_id,
-                'type'          => 'connection',
-                'resource_id'   => $conn->resourceId,
-                'greeting'      => $value,
-            ]));
-            $this->msg_id++;
-        }, function (Exception $e) {
-            echo 'Error: ' . $e->getMessage() . PHP_EOL;
-        });
-    }
+	public function onMessage(ConnectionInterface $from, $msg) {
+		$msg 	= json_decode($msg);
+		$msg_id = $this->msg_id;
 
-    public function onMessage(ConnectionInterface $from, $msg) {
-        $msg = json_decode($msg);
+		switch ($msg->type) {
+			case 'user_name':
+				$this->redis_publisher->hset('users', $from->resourceId, $msg->user_name)->then(function() use ($from, $msg, $msg_id) {
+					$data = [
+						'id'            => $msg_id,
+						'type'          => 'user_name',
+						'resource_id'   => $from->resourceId,
+						'user_name'     => $msg->user_name,
+						'error'			=> 0,
+					];
 
-        switch($msg->type) {
-            case 'user_name' :
-                $data = [
-                    'id'            => $this->msg_id,
-                    'type'          => 'user_name',
-                    'resource_id'   => $from->resourceId,
-                    'user_name'     => $msg->user_name,
-                ];
-                $this->user_name_dic[$from->resourceId] = $msg->user_name;
-                break;
+					$this->publishToRedis($data);
+				}, function(\Exception $e) use ($from, $msg, $msg_id) {
+					$data = [
+						'id'            => $msg_id,
+						'type'          => 'user_name',
+						'resource_id'   => $from->resourceId,
+						'user_name'     => $msg->user_name,
+						'error'			=> 1,
+						'error_info'	=> $e->getMessage(),
+					];
+					$this->publishToRedis($data);
+				});
+				break;
 
-            case 'message' :
-                $data = [
-                    'id'            => $this->msg_id,
-                    'type'          => 'message',
-                    'resource_id'   => $from->resourceId,
-                    'user_name'     => $this->user_name_dic[$from->resourceId],
-                    'message'       => $msg->message,
-                ];
-                break;
+			case 'message':
+				$this->redis_publisher->hget('users', $from->resourceId)->then(function ($user_name) use ($from, $msg, $msg_id) {
+					$data = [
+						'id'            => $msg_id,
+						'type'          => 'message',
+						'resource_id'   => $from->resourceId,
+						'user_name'     => $user_name,
+						'message'       => $msg->message,
+						'error'			=> 0,
+					];
 
-            default :
-                $data = [
-                    'id'            => $this->msg_id,
-                    'type'          => 'message',
-                ];
-        }
-        $this->msg_id++;
+					$this->publishToRedis($data);
+				});
+				break;
 
-        $json = json_encode($data);
+			default:
+				$data = [
+					'id'            => $this->msg_id,
+					'type'          => 'message',
+					'error'			=> 0,
+				];
+		}
+		$this->msg_id++;
+	}
 
-        // Redis にメッセージをパブリッシュ
-        $this->redis_publisher->publish('chat_channel', $json);
+	public function onClose(ConnectionInterface $conn) {
+		$this->clients->detach($conn);
+		$this->redis_publisher->hdel('users', $conn->resourceId);
+		echo "Connection {$conn->resourceId} has disconnected\n";
+	}
+
+	public function onError(ConnectionInterface $conn, \Exception $e) {
+		echo "Error: {$e->getMessage()}\n";
+		$conn->close();
+	}
+
+	protected function subscribeToRedis() {
+		echo "call :: subscribeToRedis()\n";
+
+		$this->redis_subscriber = new RedisClient('redis');
+		$this->redis_subscriber->subscribe('chat_channel');
+
+		$this->redis_subscriber->on('message', function (string $channel, string $payload) {
+			// pubsub message received on given $channel
+			var_dump($channel, json_decode($payload));
+			echo "------------------\n";
+
+			$this->broadcast(json_decode($payload));
+		});
+
+		echo "Subscribing to Redis channel\n";
+	}
+
+	protected function publishToRedis($data) {
+		$json = json_encode($data);
+
+		// Redis にメッセージをパブリッシュ
+		$this->redis_publisher->publish('chat_channel', $json);
 
 		// 履歴を保存
-        $this->redis_publisher->rpush("chat_history", $json);
+		$this->redis_publisher->rpush("chat_history", $json);
 		$this->redis_publisher->ltrim("chat_history", -100, -1);
 
+		echo "------------------\n";
+		$debug_message = $data['message'] ? $data['message'] : '';
+		echo "Chat message from ({$data['resource_id']}): {$debug_message}\n";
+		echo "------------------\n";
+	}
 
-        echo "------------------\n";
-		echo "Chat message from ({$data['resource_id']}): {$data['message']}\n";
-        echo "------------------\n";
-    }
+	public function broadcast($message) {
+		// Now $message is an object, you can access its properties
+		echo "Received message:\n";
+		print_r($message);
+		echo "------------------\n";
 
-    public function onClose(ConnectionInterface $conn) {
-        $this->clients->detach($conn);
-        echo "Connection {$conn->resourceId} has disconnected\n";
-    }
-
-    public function onError(ConnectionInterface $conn, \Exception $e) {
-        echo "Error: {$e->getMessage()}\n";
-        $conn->close();
-    }
-
-    protected function subscribeToRedis() {
-        echo "call :: subscribeToRedis()\n";
-
-        $this->redis_subscriber = new RedisClient('redis');
-        $this->redis_subscriber->subscribe('chat_channel');
-
-        $this->redis_subscriber->on('message', function (string $channel, string $payload) {
-            // pubsub message received on given $channel
-            var_dump($channel, json_decode($payload));
-            echo "------------------\n";
-
-            $this->broadcast(json_decode($payload));
-        });
-
-        echo "Subscribing to Redis channel\n";
-    }
-
-    public function broadcast($message) {
-        // Now $message is an object, you can access its properties
-        echo "Received message:\n";
-        print_r($message);
-        echo "------------------\n";
-
-        // Send the message to all connected clients
-        foreach ($this->clients as $client) {
-            $client->send(json_encode($message));
-        }
-    }
+		// Send the message to all connected clients
+		foreach ($this->clients as $client) {
+			$client->send(json_encode($message));
+		}
+	}
 }
