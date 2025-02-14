@@ -22,9 +22,12 @@ class RedisChat implements MessageComponentInterface
 	}
 
 	public function onOpen(ConnectionInterface $conn) {
-		$this->clients->attach($conn);
+		// セッションIDの生成・取得
+		$sessionId = $this->generateSessionId($conn);
 
-		echo "New connection! ({$conn->resourceId})\n";
+		$this->clients->attach($conn);
+		echo "New connection! (Client ID: {$conn->resourceId})\n";
+		echo "New connection! (Session ID: {$sessionId})\n";
 
 		if (empty($this->redis_publisher)) {
 			$this->redis_publisher = new RedisClient('redis');
@@ -34,19 +37,36 @@ class RedisChat implements MessageComponentInterface
 			$this->subscribeToRedis();
 		}
 
-		$this->redis_publisher->get('greeting')->then(function ($value) use ($conn) {
-			echo "{$this->msg_id} : {$value}\n";
+		$this->redis_publisher->hexists('sessions', $sessionId)->then(function ($exists) use ($conn, $sessionId) {
+			if (!$exists) {
+				// セッション ID が Redis に存在しない場合、新規登録
+				$this->redis_publisher->hset('sessions', $sessionId, json_encode([
+					'resource_id' => $conn->resourceId,
+					'created_at' => time()
+				]))->then(function () use ($conn, $sessionId) {
+					echo "New session created: $sessionId\n";
 
-			// クライアントに接続情報を送信
-			$conn->send(json_encode([
-				'id'            => $this->msg_id,
-				'type'          => 'connection',
-				'resource_id'   => $conn->resourceId,
-				'greeting'      => $value,
-			]));
-			$this->msg_id++;
-		}, function (Exception $e) {
-			echo 'Error: ' . $e->getMessage() . PHP_EOL;
+					// クライアントに接続情報を送信
+					$conn->send(json_encode([
+						'id'            => $this->msg_id,
+						'type'          => 'session_init',
+						'resource_id'   => $conn->resourceId,
+						'session_id'	=> $sessionId,
+					]));
+					$this->msg_id++;
+				});
+			} else {
+				echo "Existing session found: $sessionId\n";
+
+				// クライアントに接続情報を送信
+				$conn->send(json_encode([
+					'id'            => $this->msg_id,
+					'type'          => 'connection',
+					'resource_id'   => $conn->resourceId,
+					'resource_id'	=> $sessionId,
+				]));
+				$this->msg_id++;
+			}
 		});
 	}
 
@@ -113,6 +133,30 @@ class RedisChat implements MessageComponentInterface
 	public function onError(ConnectionInterface $conn, \Exception $e) {
 		echo "Error: {$e->getMessage()}\n";
 		$conn->close();
+	}
+
+	private function generateSessionId(ConnectionInterface $conn) {
+		$queryString = $conn->httpRequest->getUri()->getQuery();
+		echo "queryString : {$queryString}\n";
+		echo "------------------\n";
+
+		parse_str($queryString, $query);
+
+		// 既存セッションIDのチェック
+		if (!empty($query['session_id'])) {
+			$sessionId = $query['session_id'];
+			if ($this->validateSession($sessionId)) {
+				return $sessionId;
+			}
+		}
+
+		// 新規セッションID生成
+		$newSessionId = bin2hex(random_bytes(16));
+		return $newSessionId;
+	}
+
+	private function validateSession($sessionId) {
+		return $this->redis_publisher->hexists('sessions', $sessionId);
 	}
 
 	protected function subscribeToRedis() {

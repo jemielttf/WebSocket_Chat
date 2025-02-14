@@ -12,7 +12,11 @@ export default function App() {
 	const isComposing = useRef(false); // useRefで状態管理
 
 	useEffect(() => {
-		const socket = new WebSocket("ws://localhost:7654");
+		const sessionId = localStorage.getItem('session_id') || '';
+		const socket 	= new WebSocket(`ws://localhost:7654?session_id=${sessionId}`);
+
+		console.debug({socket});
+
 		let MY_USER_ID;
 
 		socket.onmessage = (event) => {
@@ -26,14 +30,13 @@ export default function App() {
 			}
 
 			switch (data.type) {
+				case 'session_init':
+					MY_USER_ID = data.resource_id;
+					localStorage.setItem('session_id', data.session_id);
+					break;
+
 				case 'connection':
 					MY_USER_ID = data.resource_id;
-					// setMessages((prev) => [...prev, {
-					// 	id: 		data.id,
-					// 	type: 		data.type,
-					// 	user_id: 	data.resource_id,
-					// 	message: 	`Your ID is ${data.resource_id}`
-					// }]);
 					break;
 
 				case 'user_name':
@@ -65,6 +68,17 @@ export default function App() {
 		};
 
 		setWs(socket);
+
+		// Cookieを取得
+		// function getCookie(name) {
+		// 	const value = `; ${document.cookie}`;
+		// 	const parts = value.split(`; ${name}=`);
+
+		// 	console.debug(document.cookie, value, parts);
+
+		// 	if (parts.length === 2) return parts.pop().split(';').shift();
+		// 	else					return '';
+		// }
 
 		// マウント時に#MsgInputを代入
 		const msgInput 	= msgInputRef.current;
