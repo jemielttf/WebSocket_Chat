@@ -128,49 +128,55 @@ class RedisChat implements MessageComponentInterface
 
 		switch ($msg->type) {
 			case 'user_name':
-				$this->redis_publisher->hset('users', $sessionId, $msg->user_name)->then(function() use ($from, $msg, $msg_id, $sessionId) {
-					$data = [
-						'id'            => $msg_id,
-						'type'          => 'user_name',
-						'resource_id'   => $from->resourceId,
-						'user_name'     => $msg->user_name,
-						'error'			=> 0,
-					];
+				$this->redis_publisher->hset('users', $sessionId, $msg->user_name)->then(
+					function() use ($from, $msg, $msg_id, $sessionId) {
+						$data = [
+							'id'            => $msg_id,
+							'type'          => 'user_name',
+							'resource_id'   => $from->resourceId,
+							'user_name'     => $msg->user_name,
+							'error'			=> 0,
+						];
 
-					$this->publishToRedis($data);
-					$this->updateSessionLastActiveTime($sessionId);
-				}, function(\Exception $e) use ($from, $msg, $msg_id) {
-					$data = [
-						'id'            => $msg_id,
-						'type'          => 'user_name',
-						'resource_id'   => $from->resourceId,
-						'user_name'     => $msg->user_name,
-						'error'			=> 1,
-						'error_info'	=> $e->getMessage(),
-					];
-					$this->publishToRedis($data);
-				});
+						$this->publishToRedis($data);
+						$this->updateSessionLastActiveTime($sessionId);
+					},
+
+					function(\Exception $e) use ($from, $msg, $msg_id) {
+						$data = [
+							'id'            => $msg_id,
+							'type'          => 'user_name',
+							'resource_id'   => $from->resourceId,
+							'user_name'     => $msg->user_name,
+							'error'			=> 1,
+							'error_info'	=> $e->getMessage(),
+						];
+						$this->publishToRedis($data);
+					}
+				);
 				break;
 
 			case 'message':
-				$this->redis_publisher->hget('users', $sessionId)->then(function ($user_name) use ($from, $msg, $msg_id, $sessionId) {
-					if (empty($user_name)) {
-						$from->close();
-						return;
+				$this->redis_publisher->hget('users', $sessionId)->then(
+					function ($user_name) use ($from, $msg, $msg_id, $sessionId) {
+						if (empty($user_name)) {
+							$from->close();
+							return;
+						}
+
+						$data = [
+							'id'            => $msg_id,
+							'type'          => 'message',
+							'resource_id'   => $from->resourceId,
+							'user_name'     => $user_name,
+							'message'       => $msg->message,
+							'error'			=> 0,
+						];
+
+						$this->publishToRedis($data);
+						$this->updateSessionLastActiveTime($sessionId);
 					}
-
-					$data = [
-						'id'            => $msg_id,
-						'type'          => 'message',
-						'resource_id'   => $from->resourceId,
-						'user_name'     => $user_name,
-						'message'       => $msg->message,
-						'error'			=> 0,
-					];
-
-					$this->publishToRedis($data);
-					$this->updateSessionLastActiveTime($sessionId);
-				});
+				);
 				break;
 
 			default:
@@ -185,7 +191,7 @@ class RedisChat implements MessageComponentInterface
 
 	public function onClose(ConnectionInterface $conn) {
 		$this->clients->detach($conn);
-		$this->redis->hdel('users', $conn->resourceId);
+		$this->redis->hdel('sessions', $this->clients[$conn]['session_id']);
 		echo "Connection {$conn->resourceId} has disconnected\n";
 	}
 
@@ -210,9 +216,8 @@ class RedisChat implements MessageComponentInterface
 
 		// 新規セッションID生成
 		$newSessionId = bin2hex(random_bytes(16));
-		$this->redis_publisher->hset('sessions', $newSessionId, $conn->resourceId)->then(function () use ($newSessionId) {
-			echo "New session created: $newSessionId\n";
-		});
+		$this->redis->hset('sessions', $newSessionId, $conn->resourceId);
+		echo "New session created: $newSessionId\n";
 
 		return $newSessionId;
 	}
@@ -251,10 +256,9 @@ class RedisChat implements MessageComponentInterface
 		$this->redis_publisher->publish('chat_channel', $json);
 
 		// 履歴を保存
-		$this->redis_publisher->rpush("chat_history", $json);
-		$this->redis_publisher->ltrim("chat_history", -100, -1);
+		$this->redis->rpush("chat_history", $json);
+		$this->redis->ltrim("chat_history", -100, -1);
 
-		echo "------------------\n";
 		$debug_message = array_key_exists('message', $data) ? $data['message'] : '';
 		echo "Chat message from ({$data['resource_id']}): {$debug_message}\n";
 		echo "------------------\n";
