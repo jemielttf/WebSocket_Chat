@@ -123,7 +123,8 @@ body {
 	align-self: flex-start
 }
 
-.chat-messages p.type_user_name {
+.chat-messages p.type_user_name,
+.chat-messages p.type_disconnected {
 	font-weight: bold;
 	color: rgb(220, 29, 29);
 }

@@ -62,6 +62,15 @@ export default function App() {
 					}]);
 					break;
 
+				case 'disconnected':
+					setMessages((prev) => [...prev, {
+						id: 		data.id,
+						type: 		data.type,
+						user_id: 	data.resource_id,
+						message: 	`Disconnected from WebSocket.`
+					}]);
+					break;
+
 				default:
 					break;
 			}
