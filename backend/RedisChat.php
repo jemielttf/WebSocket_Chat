@@ -35,30 +35,39 @@ class RedisChat implements MessageComponentInterface
 			$this->subscribeToRedis();
 
 			// 定期的なセッションのクリーンナップ
-			Loop::addPeriodicTimer(60, function () {
+			Loop::addPeriodicTimer(30, function () {
 				echo "------------------\n";
 				echo "セッションのクリーンナップ\n";
 				echo "------------------\n";
 
-				$this->redis_publisher->hgetall('active_sessions')->then(
-					function ($sessions) {
-						print_r($sessions);
-						echo "------------------\n";
+				$sessions = $this->redis->hgetall('active_sessions');
+				print_r($sessions);
+				echo "------------------\n";
 
-						for ($i = 0; $i < count($sessions); $i += 2) {
-							$sessionId 		= $sessions[$i];
-							$lastActivity	= $sessions[$i + 1];
+				foreach($sessions as $sessionId => $lastActivity) {
+					if (time() - $lastActivity > 90) {
+						$client_id = $this->redis->hget('sessions', $sessionId);
 
-							if (time() - $lastActivity > 180) {
-								$this->redis_publisher->hdel('sessions', $sessionId);
-								$this->redis_publisher->hdel('users', $sessionId);
-								$this->redis_publisher->hdel('active_sessions', $sessionId);
+						// セッションIDの有効期限切れ接続を強制切断
+						foreach($this->clients as $client) {
+							if ($client->resourceId == $client_id) {
+								$client->send(json_encode([
+									'id'            => $this->msg_id,
+									'type'          => 'disconnected',
+									'resource_id'   => $client->resourceId,
+									'error'			=> 0,
+								]));
+								$this->msg_id++;
+
+								$client->close();
 							}
 						}
+
+						$this->redis->hdel('sessions', $sessionId);
+						$this->redis->hdel('users', $sessionId);
+						$this->redis->hdel('active_sessions', $sessionId);
 					}
-				)->catch(function(\Exception $e) {
-					echo "ERROR!! : {$e->getMessage()}\n";
-				});
+				}
 			});
 		}
 
@@ -69,6 +78,7 @@ class RedisChat implements MessageComponentInterface
 		$this->clients->attach($conn, ['session_id' => $sessionId]);
 		echo "New connection! (Client ID: {$conn->resourceId})\n";
 		echo "New connection! (Session ID: {$sessionId})\n";
+		echo "------------------\n";
 
 		// セッションIDの登録の有無に関わらずHSETでクライアントIDの登録 or 更新をする。
 		$this->redis_publisher->hset('sessions', $sessionId, $conn->resourceId)->then(
@@ -175,7 +185,7 @@ class RedisChat implements MessageComponentInterface
 
 	public function onClose(ConnectionInterface $conn) {
 		$this->clients->detach($conn);
-		$this->redis_publisher->hdel('users', $conn->resourceId);
+		$this->redis->hdel('users', $conn->resourceId);
 		echo "Connection {$conn->resourceId} has disconnected\n";
 	}
 
@@ -208,11 +218,11 @@ class RedisChat implements MessageComponentInterface
 	}
 
 	private function validateSession($sessionId) {
-		return $this->redis->hexists('sessions', $sessionId);
+		return $this->redis->hexists('active_sessions', $sessionId);
 	}
 
 	private function updateSessionLastActiveTime($sessionId) {
-		$this->redis_publisher->hset('active_sessions', $sessionId, time());
+		$this->redis->hset('active_sessions', $sessionId, time());
 	}
 
 	protected function subscribeToRedis() {
