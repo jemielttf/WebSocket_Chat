@@ -35,17 +35,18 @@ class RedisChat implements MessageComponentInterface
 			$this->subscribeToRedis();
 
 			// 定期的なセッションのクリーンナップ
-			Loop::addPeriodicTimer(30, function () {
+			Loop::addPeriodicTimer(60, function () {
+				$sessions = $this->redis->hgetall('active_sessions');
+
+				if (empty($sessions)) return;
+
 				echo "------------------\n";
 				echo "セッションのクリーンナップ\n";
-				echo "------------------\n";
-
-				$sessions = $this->redis->hgetall('active_sessions');
 				print_r($sessions);
 				echo "------------------\n";
 
 				foreach($sessions as $sessionId => $lastActivity) {
-					if (time() - $lastActivity > 90) {
+					if (time() - $lastActivity > 240) {
 						$client_id = $this->redis->hget('sessions', $sessionId);
 
 						// セッションIDの有効期限切れ接続を強制切断
@@ -66,7 +67,16 @@ class RedisChat implements MessageComponentInterface
 						$this->redis->hdel('sessions', $sessionId);
 						$this->redis->hdel('users', $sessionId);
 						$this->redis->hdel('active_sessions', $sessionId);
+
+						echo "Deleted Session ID : {$sessionId}\n";
 					}
+				}
+				echo "------------------\n";
+
+				$sessions = $this->redis->hgetall('active_sessions');
+				if (empty($sessions)) {
+					$this->redis->del('sessions');
+					$this->redis->del('users');
 				}
 			});
 		}
@@ -112,12 +122,12 @@ class RedisChat implements MessageComponentInterface
 							);
 						}
 						$this->msg_id++;
-						$this->updateSessionLastActiveTime($sessionId);
 					})->catch(function(\Exception $e) {
 						echo "ERROR!! : {$e->getMessage()}\n";
 					});
 			}
 		);
+		$this->updateSessionLastActiveTime($sessionId);
 	}
 
 	public function onMessage(ConnectionInterface $from, $msg) {
