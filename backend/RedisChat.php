@@ -52,15 +52,7 @@ class RedisChat implements MessageComponentInterface
 						// セッションIDの有効期限切れ接続を強制切断
 						foreach($this->clients as $client) {
 							if ($client->resourceId == $client_id) {
-								$client->send(json_encode([
-									'id'            => $this->msg_id,
-									'type'          => 'disconnected',
-									'resource_id'   => $client->resourceId,
-									'error'			=> 0,
-								]));
-								$this->msg_id++;
-
-								$client->close();
+								$this->connectionClose($client);
 							}
 						}
 
@@ -170,7 +162,7 @@ class RedisChat implements MessageComponentInterface
 				$this->redis_publisher->hget('users', $sessionId)->then(
 					function ($user_name) use ($from, $msg, $msg_id, $sessionId) {
 						if (empty($user_name)) {
-							$from->close();
+							$this->connectionClose($from);
 							return;
 						}
 
@@ -207,7 +199,7 @@ class RedisChat implements MessageComponentInterface
 
 	public function onError(ConnectionInterface $conn, \Exception $e) {
 		echo "Error: {$e->getMessage()}\n";
-		$conn->close();
+		$this->connectionClose($conn, $e->getMessage());
 	}
 
 	private function generateSessionId(ConnectionInterface $conn) {
@@ -274,7 +266,22 @@ class RedisChat implements MessageComponentInterface
 		echo "------------------\n";
 	}
 
-	public function broadcast($message) {
+	protected function connectionClose(ConnectionInterface $conn, $message = null) {
+		$data = [
+			'id'            => $this->msg_id,
+			'type'          => 'disconnected',
+			'resource_id'   => $conn->resourceId,
+			'error'			=> 0,
+		];
+		$this->msg_id++;
+
+		if (!empty($message)) $data['message'] = $message;
+
+		$conn->send(json_encode($data));
+		$conn->close();
+	}
+
+	protected function broadcast($message) {
 		// Now $message is an object, you can access its properties
 		echo "Received message:\n";
 		print_r($message);
