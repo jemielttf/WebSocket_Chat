@@ -17,7 +17,8 @@ export default function App() {
 
 		console.debug({socket});
 
-		let MY_USER_ID;
+		let MY_USER_ID,
+			isMsgIsMine;
 
 		socket.onmessage = (event) => {
 			const data = JSON.parse(event.data);
@@ -28,6 +29,8 @@ export default function App() {
 			} else {
 				console.log({ data });
 			}
+
+			if (MY_USER_ID !== undefined) isMsgIsMine = MY_USER_ID === data.resource_id;
 
 			switch (data.type) {
 				case 'session_init':
@@ -40,14 +43,19 @@ export default function App() {
 					break;
 
 				case 'user_name':
+					if (!isMsgIsMine) {
+						if (document.querySelector('.chat-content').classList.contains('hidden')) return;
+					}
+
 					setMessages((prev) => [...prev, {
 						id: 		data.id,
 						type: 		data.type,
 						user_id: 	data.resource_id,
-						message: 	MY_USER_ID == data.resource_id
+						message: 	isMsgIsMine
 										? `Your ID : ${data.resource_id} is set to Name : ${data.user_name}.`
 										: `"${data.user_name}" has entered the room.`,
 					}]);
+
 					document.querySelector('.chat-entry').classList.add('hidden');
 					document.querySelector('.chat-content').classList.remove('hidden');
 					break;
