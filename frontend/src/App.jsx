@@ -17,7 +17,7 @@ export default function App() {
 
 		console.debug({socket});
 
-		let MY_USER_ID,
+		let MY_SESSION_ID = sessionId,
 			isMsgIsMine;
 
 		socket.onmessage = (event) => {
@@ -30,16 +30,16 @@ export default function App() {
 				console.log({ data });
 			}
 
-			if (MY_USER_ID !== undefined) isMsgIsMine = MY_USER_ID === data.resource_id;
+			if (MY_SESSION_ID !== undefined) isMsgIsMine = MY_SESSION_ID === data.session_id;
 
 			switch (data.type) {
 				case 'session_init':
-					MY_USER_ID = data.resource_id;
+					MY_SESSION_ID = data.session_id;
 					localStorage.setItem('session_id', data.session_id);
 					break;
 
 				case 'connection':
-					MY_USER_ID = data.resource_id;
+					MY_SESSION_ID = data.session_id;
 					break;
 
 				case 'user_name':

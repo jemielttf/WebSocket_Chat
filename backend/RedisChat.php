@@ -100,11 +100,12 @@ class RedisChat implements MessageComponentInterface
 							]));
 						} else {
 							$this->redis_publisher->hget('users', $sessionId)->then(
-								function ($user_name) use ($conn) {
+								function ($user_name) use ($conn, $sessionId) {
 									$data = [
 										'id'            => $this->msg_id,
 										'type'          => 'user_name',
 										'resource_id'   => $conn->resourceId,
+										'session_id'	=> $sessionId,
 										'user_name'     => $user_name,
 										'error'			=> 0,
 									];
@@ -136,6 +137,7 @@ class RedisChat implements MessageComponentInterface
 							'id'            => $msg_id,
 							'type'          => 'user_name',
 							'resource_id'   => $from->resourceId,
+							'session_id'	=> $sessionId,
 							'user_name'     => $msg->user_name,
 							'error'			=> 0,
 						];
@@ -144,12 +146,13 @@ class RedisChat implements MessageComponentInterface
 						$this->updateSessionLastActiveTime($sessionId);
 					},
 
-					function(\Exception $e) use ($from, $msg, $msg_id) {
+					function(\Exception $e) use ($from, $msg, $msg_id, $sessionId) {
 						$data = [
 							'id'            => $msg_id,
 							'type'          => 'user_name',
 							'resource_id'   => $from->resourceId,
 							'user_name'     => $msg->user_name,
+							'session_id'	=> $sessionId,
 							'error'			=> 1,
 							'error_info'	=> $e->getMessage(),
 						];
@@ -170,6 +173,7 @@ class RedisChat implements MessageComponentInterface
 							'id'            => $msg_id,
 							'type'          => 'message',
 							'resource_id'   => $from->resourceId,
+							'session_id'	=> $sessionId,
 							'user_name'     => $user_name,
 							'message'       => $msg->message,
 							'error'			=> 0,
