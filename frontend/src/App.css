@@ -115,7 +115,16 @@ body {
 	border-radius: 5px;
 	margin: 5px 0;
 	max-width: 100%;
-	word-wrap: break-word
+	word-wrap: break-word;
+
+	.name {
+		font-weight: 600;
+		color: #386bd0;
+	}
+}
+
+.chat-messages p[data-mine="true"] .name {
+	color: #29bc5a;
 }
 
 .chat-messages p:nth-child(odd) {
@@ -126,7 +135,7 @@ body {
 .chat-messages p.type_user_name,
 .chat-messages p.type_disconnected {
 	font-weight: bold;
-	color: rgb(220, 29, 29);
+	color: rgb(231, 111, 111);
 }
 
 .chat-input,

@@ -66,6 +66,7 @@ export default function App() {
 						type: 		data.type,
 						user_id: 	data.resource_id,
 						user_name: 	data.user_name,
+						mine:		isMsgIsMine,
 						message: 	`${data.message}`
 					}]);
 					break;
@@ -188,7 +189,7 @@ export default function App() {
 			<section className="chat-content hidden">
 				<div className="chat-messages">
 					{messages.map((msg, idx) => (
-						<p key={idx} data-msg_id={msg.id} className={'type_' + msg.type} data-user_id={msg.user_id}>
+						<p key={idx} data-msg_id={msg.id} className={'type_' + msg.type} data-user_id={msg.user_id} data-mine={msg.mine}>
 							{msg.type == 'message' && <span className="name">{msg.user_name} : </span>}
 							<span className="message">{msg.message}</span>
 						</p>
