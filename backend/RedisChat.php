@@ -16,6 +16,8 @@ class RedisChat implements MessageComponentInterface
 	protected $loop;
 
 	protected $msg_id = 0;
+	protected $SESSION_LIFETIME 		= 259200;
+	protected $SESSION_CLEANUP_INTERVAL = 3600;
 
 	public function __construct(LoopInterface $loop) {
 		$this->clients = new \SplObjectStorage;
@@ -35,7 +37,7 @@ class RedisChat implements MessageComponentInterface
 			$this->subscribeToRedis();
 
 			// 定期的なセッションのクリーンナップ
-			Loop::addPeriodicTimer(60, function () {
+			Loop::addPeriodicTimer($this->SESSION_CLEANUP_INTERVAL, function () {
 				$sessions = $this->redis->hgetall('active_sessions');
 
 				if (empty($sessions)) return;
@@ -46,7 +48,7 @@ class RedisChat implements MessageComponentInterface
 				echo "------------------\n";
 
 				foreach($sessions as $sessionId => $lastActivity) {
-					if (time() - $lastActivity > 240) {
+					if (time() - $lastActivity > $this->SESSION_LIFETIME) {
 						$client_id = $this->redis->hget('sessions', $sessionId);
 
 						// セッションIDの有効期限切れ接続を強制切断
