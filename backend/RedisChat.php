@@ -198,6 +198,8 @@ class RedisChat implements MessageComponentInterface
 	}
 
 	public function onClose(ConnectionInterface $conn) {
+		$this->sendDisconnectMessage($conn);
+
 		$this->clients->detach($conn);
 		$this->redis->hdel('sessions', $this->clients[$conn]['session_id']);
 		echo "Connection {$conn->resourceId} has disconnected\n";
@@ -273,10 +275,22 @@ class RedisChat implements MessageComponentInterface
 	}
 
 	protected function connectionClose(ConnectionInterface $conn, $message = null) {
+		$this->sendDisconnectMessage($conn, $message);
+		$conn->close();
+	}
+
+	protected function sendDisconnectMessage(ConnectionInterface $conn, $message = null) {
+		$sessionId = $this->clients[$conn]['session_id'];
+		$user_name = $this->redis->hget('users', $sessionId);
+
+		if (empty($user_name)) return;
+
 		$data = [
 			'id'            => $this->msg_id,
 			'type'          => 'disconnected',
 			'resource_id'   => $conn->resourceId,
+			'session_id'	=> $sessionId,
+			'user_name'     => $user_name,
 			'error'			=> 0,
 		];
 		$this->msg_id++;
@@ -284,7 +298,7 @@ class RedisChat implements MessageComponentInterface
 		if (!empty($message)) $data['message'] = $message;
 
 		$conn->send(json_encode($data));
-		$conn->close();
+		$this->publishToRedis($data);
 	}
 
 	protected function broadcast($message) {
