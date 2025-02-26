@@ -76,7 +76,8 @@ export default function App() {
 						id: 		data.id,
 						type: 		data.type,
 						user_id: 	data.resource_id,
-						message: 	`Disconnected from WebSocket.`
+						user_name: 	data.user_name,
+						message: 	`Disconnected.`
 					}]);
 					break;
 
@@ -84,6 +85,10 @@ export default function App() {
 					break;
 			}
 		};
+
+		socket.onclose = (event) => {
+			console.log('WebSocket is closed now.', event);
+		}
 
 		setWs(socket);
 
@@ -190,7 +195,7 @@ export default function App() {
 				<div className="chat-messages">
 					{messages.map((msg, idx) => (
 						<p key={idx} data-msg_id={msg.id} className={'type_' + msg.type} data-user_id={msg.user_id} data-mine={msg.mine}>
-							{msg.type == 'message' && <span className="name">{msg.user_name} : </span>}
+							{(msg.type == 'message' || msg.type == 'disconnected') && <span className="name">{msg.user_name} : </span>}
 							<span className="message">{msg.message}</span>
 						</p>
 					))}
