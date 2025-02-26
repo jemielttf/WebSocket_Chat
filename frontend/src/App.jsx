@@ -77,7 +77,7 @@ export default function App() {
 						type: 		data.type,
 						user_id: 	data.resource_id,
 						user_name: 	data.user_name,
-						message: 	`Disconnected.`
+						message: 	`"${data.user_name}" has left the room.`
 					}]);
 					break;
 
@@ -195,7 +195,7 @@ export default function App() {
 				<div className="chat-messages">
 					{messages.map((msg, idx) => (
 						<p key={idx} data-msg_id={msg.id} className={'type_' + msg.type} data-user_id={msg.user_id} data-mine={msg.mine}>
-							{(msg.type == 'message' || msg.type == 'disconnected') && <span className="name">{msg.user_name} : </span>}
+							{msg.type == 'message' && <span className="name">{msg.user_name} : </span>}
 							<span className="message">{msg.message}</span>
 						</p>
 					))}
