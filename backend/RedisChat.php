@@ -1,4 +1,6 @@
 <?php
+date_default_timezone_set('Asia/Tokyo');
+
 
 use Ratchet\MessageComponentInterface;
 use Ratchet\ConnectionInterface;
@@ -59,10 +61,22 @@ class RedisChat implements MessageComponentInterface
 						$sessionId = $this->clients[$conn]['session_id'];
 						echo "User exists {$sessionId} : {$exists}\n";
 
+						$msg_logs = $this->redis->lrange("chat_history", -100, -1);
+						if (!empty($msg_logs)) {
+							foreach($msg_logs as $msg_log) {
+								$data = json_decode($msg_log, true);
+
+								if ($data['type'] == 'message') {
+									$conn->send($msg_log);
+								}
+							}
+						}
+
 						if (empty($exists)) {
 							// クライアントに接続情報を送信
 							$conn->send(json_encode([
 								'id'            => $this->msg_id,
+								'timestamp'     => date("Y-m-d\TH:i:sO"),
 								'type'          => 'session_init',
 								'resource_id'   => $conn->resourceId,
 								'session_id'	=> $sessionId,
@@ -115,6 +129,7 @@ class RedisChat implements MessageComponentInterface
 
 						$data = [
 							'id'            => $msg_id,
+							'timestamp'     => date("Y-m-d\TH:i:sO"),
 							'type'          => 'message',
 							'resource_id'   => $from->resourceId,
 							'session_id'	=> $sessionId,
@@ -229,6 +244,7 @@ class RedisChat implements MessageComponentInterface
 
 		$data = [
 			'id'            => $this->msg_id,
+			'timestamp'     => date("Y-m-d\TH:i:sO"),
 			'type'          => 'disconnected',
 			'resource_id'   => $conn->resourceId,
 			'session_id'	=> $sessionId,
@@ -246,6 +262,7 @@ class RedisChat implements MessageComponentInterface
 	protected function sendUserNameMessage(ConnectionInterface $conn, $user_name, $sessionId, \Exception $e = null) {
 		$data = [
 			'id'            => $this->msg_id,
+			'timestamp'     => date("Y-m-d\TH:i:sO"),
 			'type'          => 'user_name',
 			'resource_id'   => $conn->resourceId,
 			'session_id'	=> $sessionId,
