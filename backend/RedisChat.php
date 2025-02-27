@@ -17,7 +17,7 @@ class RedisChat implements MessageComponentInterface
 
 	protected $msg_id = 0;
 	protected $SESSION_LIFETIME 		= 259200;
-	protected $SESSION_CLEANUP_INTERVAL = 3600;
+	protected $SESSION_CLEANUP_INTERVAL = 60;
 
 	public function __construct(LoopInterface $loop) {
 		$this->clients = new \SplObjectStorage;
@@ -85,34 +85,23 @@ class RedisChat implements MessageComponentInterface
 		echo "------------------\n";
 
 		// セッションIDの登録の有無に関わらずHSETでクライアントIDの登録 or 更新をする。
-		$this->redis_publisher->hset('sessions', $sessionId, $conn->resourceId)->then(
-			function () use ($conn, $sessionId) {
-				$this->redis_publisher->hexists('users', $sessionId)->then(
-					function ($exists) use ($conn) {
-						$sessionId = $this->clients[$conn]['session_id'];
+		$this->redis->hset('sessions', $sessionId, $conn->resourceId);
+		$exists = $this->redis->hexists('users', $sessionId);
 
-						if (empty($exists)) {
-							// クライアントに接続情報を送信
-							$conn->send(json_encode([
-								'id'            => $this->msg_id,
-								'type'          => 'session_init',
-								'resource_id'   => $conn->resourceId,
-								'session_id'	=> $sessionId,
-								'error'			=> 0,
-							]));
-							$this->msg_id++;
-						} else {
-							$this->redis_publisher->hget('users', $sessionId)->then(
-								function ($user_name) use ($conn, $sessionId) {
-									$this->sendUserNameMessage($conn, $user_name, $sessionId);
-								}
-							);
-						}
-					})->catch(function(\Exception $e) {
-						echo "ERROR!! : {$e->getMessage()}\n";
-					});
-			}
-		);
+		if ($exists) {
+			$user_name = $this->redis->hget('users', $sessionId);
+			$this->sendUserNameMessage($conn, $user_name, $sessionId);
+		} else {
+			$conn->send(json_encode([
+				'id'            => $this->msg_id,
+				'type'          => 'session_init',
+				'resource_id'   => $conn->resourceId,
+				'session_id'	=> $sessionId,
+				'error'			=> 0,
+			]));
+			$this->msg_id++;
+		}
+
 		$this->updateSessionLastActiveTime($sessionId);
 	}
 
