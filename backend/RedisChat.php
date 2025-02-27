@@ -37,41 +37,8 @@ class RedisChat implements MessageComponentInterface
 			$this->subscribeToRedis();
 
 			// 定期的なセッションのクリーンナップ
-			Loop::addPeriodicTimer($this->SESSION_CLEANUP_INTERVAL, function () {
-				$sessions = $this->redis->hgetall('active_sessions');
-
-				if (empty($sessions)) return;
-
-				echo "------------------\n";
-				echo "セッションのクリーンナップ\n";
-				print_r($sessions);
-				echo "------------------\n";
-
-				foreach($sessions as $sessionId => $lastActivity) {
-					if (time() - $lastActivity > $this->SESSION_LIFETIME) {
-						$client_id = $this->redis->hget('sessions', $sessionId);
-
-						// セッションIDの有効期限切れ接続を強制切断
-						foreach($this->clients as $client) {
-							if ($client->resourceId == $client_id) {
-								$this->connectionClose($client);
-							}
-						}
-
-						$this->redis->hdel('sessions', $sessionId);
-						$this->redis->hdel('users', $sessionId);
-						$this->redis->hdel('active_sessions', $sessionId);
-
-						echo "Deleted Session ID : {$sessionId}\n";
-					}
-				}
-				echo "------------------\n";
-
-				$sessions = $this->redis->hgetall('active_sessions');
-				if (empty($sessions)) {
-					$this->redis->del('sessions');
-					$this->redis->del('users');
-				}
+			Loop::addPeriodicTimer($this->SESSION_CLEANUP_INTERVAL, function() {
+				$this->session_cleanup();
 			});
 		}
 
@@ -85,22 +52,35 @@ class RedisChat implements MessageComponentInterface
 		echo "------------------\n";
 
 		// セッションIDの登録の有無に関わらずHSETでクライアントIDの登録 or 更新をする。
-		$this->redis->hset('sessions', $sessionId, $conn->resourceId);
-		$exists = $this->redis->hexists('users', $sessionId);
+		$this->redis_publisher->hset('sessions', $sessionId, $conn->resourceId)->then(
+			function () use ($conn, $sessionId) {
+				$this->redis_publisher->hexists('users', $sessionId)->then(
+					function ($exists) use ($conn) {
+						$sessionId = $this->clients[$conn]['session_id'];
+						echo "User exists {$sessionId} : {$exists}\n";
 
-		if ($exists) {
-			$user_name = $this->redis->hget('users', $sessionId);
-			$this->sendUserNameMessage($conn, $user_name, $sessionId);
-		} else {
-			$conn->send(json_encode([
-				'id'            => $this->msg_id,
-				'type'          => 'session_init',
-				'resource_id'   => $conn->resourceId,
-				'session_id'	=> $sessionId,
-				'error'			=> 0,
-			]));
-			$this->msg_id++;
-		}
+						if (empty($exists)) {
+							// クライアントに接続情報を送信
+							$conn->send(json_encode([
+								'id'            => $this->msg_id,
+								'type'          => 'session_init',
+								'resource_id'   => $conn->resourceId,
+								'session_id'	=> $sessionId,
+								'error'			=> 0,
+							]));
+							$this->msg_id++;
+						} else {
+							$this->redis_publisher->hget('users', $sessionId)->then(
+								function ($user_name) use ($conn, $sessionId) {
+									$this->sendUserNameMessage($conn, $user_name, $sessionId);
+								}
+							);
+						}
+					})->catch(function(\Exception $e) {
+						echo "ERROR!! : {$e->getMessage()}\n";
+					});
+			}
+		);
 
 		$this->updateSessionLastActiveTime($sessionId);
 	}
@@ -291,6 +271,43 @@ class RedisChat implements MessageComponentInterface
 		// Send the message to all connected clients
 		foreach ($this->clients as $client) {
 			$client->send(json_encode($message));
+		}
+	}
+
+	protected function session_cleanup() {
+		$sessions = $this->redis->hgetall('active_sessions');
+
+		if (empty($sessions)) return;
+
+		echo "------------------\n";
+		echo "セッションのクリーンナップ\n";
+		print_r($sessions);
+		echo "------------------\n";
+
+		foreach($sessions as $sessionId => $lastActivity) {
+			if (time() - $lastActivity > $this->SESSION_LIFETIME) {
+				$client_id = $this->redis->hget('sessions', $sessionId);
+
+				// セッションIDの有効期限切れ接続を強制切断
+				foreach($this->clients as $client) {
+					if ($client->resourceId == $client_id) {
+						$this->connectionClose($client);
+					}
+				}
+
+				$this->redis->hdel('sessions', $sessionId);
+				$this->redis->hdel('users', $sessionId);
+				$this->redis->hdel('active_sessions', $sessionId);
+
+				echo "Deleted Session ID : {$sessionId}\n";
+			}
+		}
+		echo "------------------\n";
+
+		$sessions = $this->redis->hgetall('active_sessions');
+		if (empty($sessions)) {
+			$this->redis->del('sessions');
+			$this->redis->del('users');
 		}
 	}
 }
