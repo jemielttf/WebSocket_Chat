@@ -100,23 +100,14 @@ class RedisChat implements MessageComponentInterface
 								'session_id'	=> $sessionId,
 								'error'			=> 0,
 							]));
+							$this->msg_id++;
 						} else {
 							$this->redis_publisher->hget('users', $sessionId)->then(
 								function ($user_name) use ($conn, $sessionId) {
-									$data = [
-										'id'            => $this->msg_id,
-										'type'          => 'user_name',
-										'resource_id'   => $conn->resourceId,
-										'session_id'	=> $sessionId,
-										'user_name'     => $user_name,
-										'error'			=> 0,
-									];
-
-									$this->publishToRedis($data);
+									$this->sendUserNameMessage($conn, $user_name, $sessionId);
 								}
 							);
 						}
-						$this->msg_id++;
 					})->catch(function(\Exception $e) {
 						echo "ERROR!! : {$e->getMessage()}\n";
 					});
@@ -134,31 +125,13 @@ class RedisChat implements MessageComponentInterface
 		switch ($msg->type) {
 			case 'user_name':
 				$this->redis_publisher->hset('users', $sessionId, $msg->user_name)->then(
-					function() use ($from, $msg, $msg_id, $sessionId) {
-						$data = [
-							'id'            => $msg_id,
-							'type'          => 'user_name',
-							'resource_id'   => $from->resourceId,
-							'session_id'	=> $sessionId,
-							'user_name'     => $msg->user_name,
-							'error'			=> 0,
-						];
-
-						$this->publishToRedis($data);
+					function() use ($from, $msg, $sessionId) {
+						$this->sendUserNameMessage($from, $msg->user_name, $sessionId);
 						$this->updateSessionLastActiveTime($sessionId);
 					},
 
-					function(\Exception $e) use ($from, $msg, $msg_id, $sessionId) {
-						$data = [
-							'id'            => $msg_id,
-							'type'          => 'user_name',
-							'resource_id'   => $from->resourceId,
-							'user_name'     => $msg->user_name,
-							'session_id'	=> $sessionId,
-							'error'			=> 1,
-							'error_info'	=> $e->getMessage(),
-						];
-						$this->publishToRedis($data);
+					function(\Exception $e) use ($from, $msg, $sessionId) {
+						$this->sendUserNameMessage($from, $msg->user_name, $sessionId, $e);
 					}
 				);
 				break;
@@ -180,6 +153,7 @@ class RedisChat implements MessageComponentInterface
 							'message'       => $msg->message,
 							'error'			=> 0,
 						];
+						$this->msg_id++;
 
 						$this->publishToRedis($data);
 						$this->updateSessionLastActiveTime($sessionId);
@@ -194,7 +168,6 @@ class RedisChat implements MessageComponentInterface
 					'error'			=> 0,
 				];
 		}
-		$this->msg_id++;
 	}
 
 	public function onClose(ConnectionInterface $conn) {
@@ -298,6 +271,25 @@ class RedisChat implements MessageComponentInterface
 		if (!empty($message)) $data['message'] = $message;
 
 		$conn->send(json_encode($data));
+		$this->publishToRedis($data);
+	}
+
+	protected function sendUserNameMessage(ConnectionInterface $conn, $user_name, $sessionId, \Exception $e = null) {
+		$data = [
+			'id'            => $this->msg_id,
+			'type'          => 'user_name',
+			'resource_id'   => $conn->resourceId,
+			'session_id'	=> $sessionId,
+			'user_name'     => $user_name,
+			'error'			=> 0,
+		];
+		$this->msg_id++;
+
+		if ($e !== null) {
+			$data['error'] = 1;
+			$data['message'] = $e->getMessage();
+		}
+
 		$this->publishToRedis($data);
 	}
 
