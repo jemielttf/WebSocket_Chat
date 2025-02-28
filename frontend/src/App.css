@@ -127,6 +127,20 @@ body {
 	color: #29bc5a;
 }
 
+.chat-messages p[data-is_log="true"] {
+	.message {
+		color: #c7c7c7 !important;
+	}
+
+	.name {
+		color: #a5a5a5 !important;
+	}
+
+	.name + .message {
+		color: #666 !important;
+	}
+}
+
 .chat-messages p:nth-child(odd) {
 	background: #eef6f0;
 	align-self: flex-start

@@ -33,13 +33,29 @@ export default function App() {
 			if (MY_SESSION_ID !== undefined) isMsgIsMine = MY_SESSION_ID === data.session_id;
 
 			switch (data.type) {
+				case 'connection':
+					console.log('A connection to the server has been established.');
+					break;
+
 				case 'session_init':
 					MY_SESSION_ID = data.session_id;
 					localStorage.setItem('session_id', data.session_id);
+					console.log('Session ID has been set.', MY_SESSION_ID);
 					break;
 
-				case 'connection':
-					MY_SESSION_ID = data.session_id;
+				case 'chat_logs':
+					// setMessages((prev) => [...prev, ...data.messages]);
+					data.messages.forEach((msg) => {
+						setMessages((prev) => [...prev, {
+							id: 		msg.id,
+							type: 		msg.type,
+							user_id: 	msg.resource_id,
+							user_name: 	msg.user_name,
+							mine:		false,
+							message: 	msg.message,
+							is_log:		true,
+						}]);
+					});
 					break;
 
 				case 'user_name':
@@ -54,6 +70,7 @@ export default function App() {
 						message: 	isMsgIsMine
 										? `Your ID : ${data.resource_id} is set to Name : ${data.user_name}.`
 										: `"${data.user_name}" has entered the room.`,
+						is_log:		data.is_log ? true : false,
 					}]);
 
 					document.querySelector('.chat-entry').classList.add('hidden');
@@ -67,7 +84,8 @@ export default function App() {
 						user_id: 	data.resource_id,
 						user_name: 	data.user_name,
 						mine:		isMsgIsMine,
-						message: 	`${data.message}`
+						message: 	`${data.message}`,
+						is_log:		data.is_log ? true : false,
 					}]);
 					break;
 
@@ -77,7 +95,8 @@ export default function App() {
 						type: 		data.type,
 						user_id: 	data.resource_id,
 						user_name: 	data.user_name,
-						message: 	`"${data.user_name}" has left the room.`
+						message: 	`"${data.user_name}" has left the room.`,
+						is_log:		data.is_log ? true : false,
 					}]);
 					break;
 
@@ -194,7 +213,7 @@ export default function App() {
 			<section className="chat-content hidden">
 				<div className="chat-messages">
 					{messages.map((msg, idx) => (
-						<p key={idx} data-msg_id={msg.id} className={'type_' + msg.type} data-user_id={msg.user_id} data-mine={msg.mine}>
+						<p key={idx} data-msg_id={msg.id} className={'type_' + msg.type} data-user_id={msg.user_id} data-mine={msg.mine} data-is_log={msg.is_log}>
 							{msg.type == 'message' && <span className="name">{msg.user_name} : </span>}
 							<span className="message">{msg.message}</span>
 						</p>

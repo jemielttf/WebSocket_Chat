@@ -30,6 +30,15 @@ class RedisChat implements MessageComponentInterface
 	}
 
 	public function onOpen(ConnectionInterface $conn) {
+		$conn->send(json_encode([
+			'id'            => $this->msg_id,
+			'timestamp'     => date("Y-m-d\TH:i:sO"),
+			'type'          => 'connection',
+			'resource_id'   => $conn->resourceId,
+			'error'			=> 0,
+		]));
+		$this->msg_id++;
+
 		// Redisへの接続を確立
 		if (empty($this->redis_publisher)) {
 			$this->redis_publisher = new RedisClient('redis');
@@ -63,13 +72,23 @@ class RedisChat implements MessageComponentInterface
 
 						$msg_logs = $this->redis->lrange("chat_history", -100, -1);
 						if (!empty($msg_logs)) {
-							foreach($msg_logs as $msg_log) {
-								$data = json_decode($msg_log, true);
+							foreach($msg_logs as &$msg_log) {
+								$msg_log = json_decode($msg_log, true);
+								$msg_log["is_log"] = true;
 
-								if ($data['type'] == 'message') {
-									$conn->send($msg_log);
-								}
+								$conn->send(json_encode($msg_log));
 							}
+
+							// $conn->send(json_encode([
+							// 	'id'            => $this->msg_id,
+							// 	'timestamp'     => date("Y-m-d\TH:i:sO"),
+							// 	'type'          => 'chat_logs',
+							// 	'messages'		=> $msg_logs,
+							// 	'resource_id'   => $conn->resourceId,
+							// 	'session_id'	=> $sessionId,
+							// 	'error'			=> 0,
+							// ]));
+							// $this->msg_id++;
 						}
 
 						if (empty($exists)) {
